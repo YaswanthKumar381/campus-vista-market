@@ -1,151 +1,192 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-type User = {
+type Profile = {
   id: string;
-  fullName: string;
-  email: string;
-  studentId: string;
-  phoneNumber?: string;
-  hostelDetails?: string;
-  profileImage?: string;
+  full_name: string;
+  student_id: string;
+  phone_number?: string;
+  hostel_details?: string;
+  avatar_url?: string;
 };
 
 type AuthContextType = {
   user: User | null;
+  profile: Profile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   register: (userData: RegisterData) => Promise<boolean>;
-  updateProfile: (userData: Partial<User>) => void;
+  updateProfile: (updates: Partial<Profile>) => Promise<boolean>;
 };
 
 type RegisterData = {
-  fullName: string;
+  full_name: string;
   email: string;
   password: string;
-  studentId: string;
-  phoneNumber?: string;
-  hostelDetails?: string;
+  student_id: string;
+  phone_number?: string;
+  hostel_details?: string;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  
+  const [session, setSession] = useState<Session | null>(null);
+
   useEffect(() => {
-    // Check for existing user in localStorage
-    const storedUser = localStorage.getItem('campusMarketUser');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error('Failed to parse stored user data:', error);
-        localStorage.removeItem('campusMarketUser');
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          // Defer profile fetch to avoid deadlock
+          setTimeout(() => {
+            fetchProfile(session.user.id);
+          }, 0);
+        } else {
+          setProfile(null);
+        }
       }
-    }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      }
+    });
+
     setIsLoading(false);
+    return () => subscription.unsubscribe();
   }, []);
 
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching profile:', error);
+      return;
+    }
+
+    setProfile(data);
+  };
+
   const login = async (email: string, password: string): Promise<boolean> => {
-    setIsLoading(true);
     try {
-      // Simulate API call with timeout
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // For demo purposes only - validate IIIT RK Valley domain
-      if (!email.endsWith('@iiitrkvalley.ac.in')) {
-        toast.error("Only IIIT RK Valley email addresses are allowed.");
+      if (!email.endsWith('@rguktrkv.ac.in')) {
+        toast.error('Please use your RGUKT RK Valley email address');
         return false;
       }
 
-      // In a real app, you would validate credentials against a backend
-      // For now, simulate successful login with mock data
-      const mockUser: User = {
-        id: Math.random().toString(36).substring(2, 9),
-        fullName: email.split('@')[0].replace(/[.]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-        email: email,
-        studentId: 'RK' + Math.floor(100000 + Math.random() * 900000).toString(),
-        profileImage: `https://ui-avatars.com/api/?name=${encodeURIComponent(email.split('@')[0])}&background=random`
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('campusMarketUser', JSON.stringify(mockUser));
-      toast.success("Login successful!");
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+
+      toast.success('Welcome back!');
       return true;
     } catch (error) {
-      console.error("Login error:", error);
-      toast.error("Login failed. Please try again.");
+      console.error('Login error:', error);
+      toast.error('An error occurred during login');
       return false;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const register = async (userData: RegisterData): Promise<boolean> => {
-    setIsLoading(true);
     try {
-      // Simulate API call with timeout
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Validate IIIT RK Valley domain
-      if (!userData.email.endsWith('@iiitrkvalley.ac.in')) {
-        toast.error("Only IIIT RK Valley email addresses are allowed.");
+      if (!userData.email.endsWith('@rguktrkv.ac.in')) {
+        toast.error('Please use your RGUKT RK Valley email address');
         return false;
       }
-      
-      // In a real app, you would register with a backend
-      // For now, simulate successful registration
-      const newUser: User = {
-        id: Math.random().toString(36).substring(2, 9),
-        fullName: userData.fullName,
+
+      const { error } = await supabase.auth.signUp({
         email: userData.email,
-        studentId: userData.studentId,
-        phoneNumber: userData.phoneNumber,
-        hostelDetails: userData.hostelDetails,
-        profileImage: `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.fullName)}&background=random`
-      };
-      
-      setUser(newUser);
-      localStorage.setItem('campusMarketUser', JSON.stringify(newUser));
-      toast.success("Registration successful!");
+        password: userData.password,
+        options: {
+          data: {
+            full_name: userData.full_name,
+            student_id: userData.student_id,
+          },
+        },
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+
+      toast.success('Registration successful!');
       return true;
     } catch (error) {
-      console.error("Registration error:", error);
-      toast.error("Registration failed. Please try again.");
+      console.error('Registration error:', error);
+      toast.error('An error occurred during registration');
       return false;
-    } finally {
-      setIsLoading(false);
     }
   };
-  
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('campusMarketUser');
-    toast.info("You have been logged out.");
+
+  const logout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      toast.success('Successfully logged out');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      toast.error('Error logging out');
+    }
   };
-  
-  const updateProfile = (userData: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...userData };
-      setUser(updatedUser);
-      localStorage.setItem('campusMarketUser', JSON.stringify(updatedUser));
-      toast.success("Profile updated successfully!");
+
+  const updateProfile = async (updates: Partial<Profile>): Promise<boolean> => {
+    try {
+      if (!user) return false;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setProfile(prev => prev ? { ...prev, ...updates } : null);
+      toast.success('Profile updated successfully');
+      return true;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast.error('Error updating profile');
+      return false;
     }
   };
 
   const value = {
     user,
+    profile,
     isAuthenticated: !!user,
     isLoading,
     login,
     logout,
     register,
-    updateProfile
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -154,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };

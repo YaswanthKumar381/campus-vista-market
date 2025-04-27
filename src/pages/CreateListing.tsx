@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useData, Product } from '@/context/DataContext';
@@ -20,7 +19,7 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, X, Loader2, Upload, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, X, Loader2, Upload, Image as ImageIcon, MapPin } from 'lucide-react';
 
 const categories = [
   "Books",

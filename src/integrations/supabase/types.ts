@@ -9,7 +9,116 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      products: {
+        Row: {
+          category: string
+          condition: string
+          created_at: string | null
+          description: string | null
+          id: string
+          images: string[] | null
+          location: string | null
+          negotiable: boolean | null
+          price: number
+          seller_id: string
+          status: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          condition: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          images?: string[] | null
+          location?: string | null
+          negotiable?: boolean | null
+          price: number
+          seller_id: string
+          status?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          condition?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          images?: string[] | null
+          location?: string | null
+          negotiable?: boolean | null
+          price?: number
+          seller_id?: string
+          status?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          full_name: string
+          hostel_details: string | null
+          id: string
+          phone_number: string | null
+          student_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          full_name: string
+          hostel_details?: string | null
+          id: string
+          phone_number?: string | null
+          student_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          full_name?: string
+          hostel_details?: string | null
+          id?: string
+          phone_number?: string | null
+          student_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      wishlists: {
+        Row: {
+          created_at: string | null
+          id: string
+          product_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          product_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          product_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wishlists_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
