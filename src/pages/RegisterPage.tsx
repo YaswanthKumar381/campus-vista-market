@@ -67,11 +67,11 @@ const RegisterPage = () => {
     
     setIsLoading(true);
     const success = await register({
-      fullName: formData.fullName,
+      full_name: formData.fullName,
       email: formData.email,
-      studentId: formData.studentId,
-      phoneNumber: formData.phoneNumber,
-      hostelDetails: formData.hostelDetails,
+      student_id: formData.studentId,
+      phone_number: formData.phoneNumber,
+      hostel_details: formData.hostelDetails,
       password: formData.password
     });
     setIsLoading(false);

@@ -13,8 +13,17 @@ type Profile = {
   avatar_url?: string;
 };
 
+// Extended user info with camelCase properties for component use
+export type UserInfo = User & {
+  fullName?: string;
+  studentId?: string;
+  phoneNumber?: string;
+  hostelDetails?: string;
+  profileImage?: string;
+};
+
 type AuthContextType = {
-  user: User | null;
+  user: UserInfo | null;
   profile: Profile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -36,7 +45,7 @@ type RegisterData = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -46,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
-        setUser(session?.user ?? null);
+        setUser(session?.user ? {...session.user} : null);
         
         if (session?.user) {
           // Defer profile fetch to avoid deadlock
@@ -62,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
+      setUser(session?.user ? {...session.user} : null);
       
       if (session?.user) {
         fetchProfile(session.user.id);
@@ -86,6 +95,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setProfile(data);
+    
+    // Update the user object with profile data in camelCase format
+    setUser(prevUser => {
+      if (!prevUser) return null;
+      
+      return {
+        ...prevUser,
+        fullName: data.full_name,
+        studentId: data.student_id,
+        phoneNumber: data.phone_number,
+        hostelDetails: data.hostel_details,
+        profileImage: data.avatar_url,
+      };
+    });
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -169,6 +192,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
 
       setProfile(prev => prev ? { ...prev, ...updates } : null);
+      
+      // Update the user object with the new profile data in camelCase format
+      setUser(prevUser => {
+        if (!prevUser) return null;
+        
+        return {
+          ...prevUser,
+          fullName: updates.full_name || prevUser.fullName,
+          studentId: updates.student_id || prevUser.studentId,
+          phoneNumber: updates.phone_number || prevUser.phoneNumber,
+          hostelDetails: updates.hostel_details || prevUser.hostelDetails,
+          profileImage: updates.avatar_url || prevUser.profileImage,
+        };
+      });
+      
       toast.success('Profile updated successfully');
       return true;
     } catch (error) {

@@ -77,10 +77,10 @@ const ProfilePage = () => {
       }
 
       updateProfile({
-        fullName: formData.fullName,
-        phoneNumber: formData.phoneNumber,
-        hostelDetails: formData.hostelDetails,
-        profileImage: formData.profileImage,
+        full_name: formData.fullName,
+        phone_number: formData.phoneNumber,
+        hostel_details: formData.hostelDetails,
+        avatar_url: formData.profileImage,
       });
 
       setIsEditing(false);
