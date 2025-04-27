@@ -28,11 +28,12 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import { BadgeCheck, Heart, MessageSquare, Trash2, ArrowLeft, Edit, MapPin, CalendarDays } from 'lucide-react';
+import { BadgeCheck, Heart, MessageSquare, Trash2, ArrowLeft, Edit, MapPin, CalendarDays, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import ProductCard from '@/components/products/ProductCard';
+import { supabase } from '@/integrations/supabase/client';
 
 const ProductDetails = () => {
   const { productId } = useParams<{ productId: string }>();
@@ -44,6 +45,7 @@ const ProductDetails = () => {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [message, setMessage] = useState('Hi, is this still available?');
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [sellerPhoneNumber, setSellerPhoneNumber] = useState<string | null>(null);
   const isWishlisted = productId ? wishlist.includes(productId) : false;
 
   // Find the product and determine if current user is the owner
@@ -61,12 +63,34 @@ const ProductDetails = () => {
           p.status === 'Active'
         ).slice(0, 4);
         setRelatedProducts(related);
+        
+        // Fetch seller phone number
+        fetchSellerPhoneNumber(foundProduct.sellerId);
       } else {
         toast.error('Product not found');
         navigate('/products');
       }
     }
   }, [productId, products, user, navigate]);
+
+  const fetchSellerPhoneNumber = async (sellerId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('phone_number')
+        .eq('id', sellerId)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching seller phone number:', error);
+        return;
+      }
+      
+      setSellerPhoneNumber(data?.phone_number || null);
+    } catch (error) {
+      console.error('Error fetching seller details:', error);
+    }
+  };
 
   const handleWishlistToggle = () => {
     if (!productId) return;
@@ -92,6 +116,15 @@ const ProductDetails = () => {
     deleteProduct(productId);
     toast.success('Product deleted successfully');
     navigate('/dashboard');
+  };
+
+  const handleContactSeller = () => {
+    if (sellerPhoneNumber) {
+      const whatsappUrl = `https://wa.me/${sellerPhoneNumber.replace(/\D/g, '')}?text=Hi, I'm interested in your product: ${product?.name}`;
+      window.open(whatsappUrl, '_blank');
+    } else {
+      toast.error('Seller has not provided a phone number');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -298,30 +331,43 @@ const ProductDetails = () => {
               )}
             </div>
           ) : (
-            <Card>
-              <CardContent className="pt-6 pb-4">
-                <CardTitle className="text-base mb-2">Interested in this item?</CardTitle>
-                <CardDescription className="mb-4">
-                  Send a message to the seller to express your interest or ask questions.
-                </CardDescription>
-                <Textarea
-                  placeholder="Write your message"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="mb-4"
-                />
-              </CardContent>
-              <CardFooter>
+            <div className="flex flex-col space-y-4">
+              <Card>
+                <CardContent className="pt-6 pb-4">
+                  <CardTitle className="text-base mb-2">Interested in this item?</CardTitle>
+                  <CardDescription className="mb-4">
+                    Send a message to the seller to express your interest or ask questions.
+                  </CardDescription>
+                  <Textarea
+                    placeholder="Write your message"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="mb-4"
+                  />
+                </CardContent>
+                <CardFooter>
+                  <Button 
+                    className="w-full" 
+                    onClick={handleSendMessage}
+                    disabled={message.trim() === ''}
+                  >
+                    <MessageSquare className="mr-2 h-4 w-4" />
+                    Contact via Chat
+                  </Button>
+                </CardFooter>
+              </Card>
+              
+              {sellerPhoneNumber && (
                 <Button 
+                  variant="outline"
                   className="w-full" 
-                  onClick={handleSendMessage}
-                  disabled={message.trim() === ''}
+                  onClick={handleContactSeller}
                 >
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  Contact Seller
+                  <Phone className="mr-2 h-4 w-4" />
+                  Contact via WhatsApp
                 </Button>
-              </CardFooter>
-            </Card>
+              )}
+            </div>
           )}
         </div>
       </div>

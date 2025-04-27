@@ -37,8 +37,8 @@ const RegisterPage = () => {
       toast.error('Please enter your email');
       return false;
     }
-    if (!formData.email.endsWith('@iiitrkvalley.ac.in')) {
-      toast.error('Please use your IIIT RK Valley email address');
+    if (!formData.email.endsWith('@rguktrkv.ac.in')) {
+      toast.error('Please use your RGUKT RK Valley email address');
       return false;
     }
     if (!formData.studentId) {
@@ -95,7 +95,7 @@ const RegisterPage = () => {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-heading text-center">Create an Account</CardTitle>
           <CardDescription className="text-center">
-            Register with your IIIT RK Valley email
+            Register with your RGUKT RK Valley email
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -118,7 +118,7 @@ const RegisterPage = () => {
               id="email"
               name="email"
               type="email" 
-              placeholder="student@iiitrkvalley.ac.in"
+              placeholder="student@rguktrkv.ac.in"
               value={formData.email}
               onChange={handleChange}
               className="input-animation"
@@ -126,7 +126,7 @@ const RegisterPage = () => {
               disabled={isLoading}
             />
             <p className="text-xs text-muted-foreground">
-              Must be an IIIT RK Valley email address
+              Must be an RGUKT RK Valley email address
             </p>
           </div>
           <div className="space-y-2">
