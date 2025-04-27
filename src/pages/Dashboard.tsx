@@ -1,19 +1,31 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useData, Product } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, Instagram, Twitter } from 'lucide-react';
 import ProductCard from '@/components/products/ProductCard';
 
 const Dashboard = () => {
-  const { products } = useData();
+  const { products, fetchProducts } = useData();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch products when component mounts
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      await fetchProducts();
+      setIsLoading(false);
+    };
+    
+    loadData();
+  }, [fetchProducts]);
 
   // Product filtering
   const allProducts = products.filter(product => 
@@ -64,6 +76,20 @@ const Dashboard = () => {
                 </Button>
               </Link>
             </div>
+            
+            {/* Social media links */}
+            <div className="flex items-center mt-6 space-x-4">
+              <a href="https://www.instagram.com/campusmarket1/" target="_blank" rel="noopener noreferrer" 
+                className="flex items-center text-white hover:text-blue-100 transition-colors">
+                <Instagram className="h-5 w-5 mr-2" />
+                <span className="text-sm">@campusmarket1</span>
+              </a>
+              <a href="https://x.com/campus43281" target="_blank" rel="noopener noreferrer"
+                className="flex items-center text-white hover:text-blue-100 transition-colors">
+                <Twitter className="h-5 w-5 mr-2" />
+                <span className="text-sm">@campus43281</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -93,7 +119,11 @@ const Dashboard = () => {
           </TabsList>
 
           <TabsContent value={activeTab}>
-            {filteredProducts.length > 0 ? (
+            {isLoading ? (
+              <div className="flex justify-center items-center py-20">
+                <div className="animate-bounce h-8 w-8 bg-campus-blue rounded-full"></div>
+              </div>
+            ) : filteredProducts.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
                 {filteredProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />

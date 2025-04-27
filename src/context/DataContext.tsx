@@ -1,6 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 // Define types
 export type Product = {
@@ -45,13 +45,14 @@ type DataContextType = {
   conversations: Conversation[];
   messages: Record<string, Message[]>;
   createProduct: (product: Omit<Product, 'id' | 'createdAt' | 'status'>) => Promise<string>;
-  updateProduct: (id: string, updates: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  addToWishlist: (productId: string) => void;
-  removeFromWishlist: (productId: string) => void;
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  addToWishlist: (productId: string) => Promise<void>;
+  removeFromWishlist: (productId: string) => Promise<void>;
   sendMessage: (receiverId: string, content: string, productId?: string) => void;
   markAsRead: (userId: string) => void;
   getUserProducts: (userId: string) => Product[];
+  fetchProducts: () => Promise<void>;
 };
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -61,168 +62,107 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Load initial mock data
+  // Load initial data
   useEffect(() => {
-    // Try to load from localStorage first
-    const storedProducts = localStorage.getItem('campusMarketProducts');
-    const storedWishlist = localStorage.getItem('campusMarketWishlist');
+    fetchProducts();
+    fetchWishlist();
+    fetchMessages();
+  }, []);
+
+  // Fetch products from Supabase
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          id, 
+          title, 
+          description, 
+          price, 
+          negotiable, 
+          condition, 
+          category, 
+          location, 
+          images, 
+          seller_id, 
+          status, 
+          created_at,
+          profiles(id, full_name, avatar_url)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching products:', error);
+        toast.error('Failed to fetch products');
+        return;
+      }
+
+      // Transform from Supabase format to our app format
+      const transformedProducts = data.map(item => ({
+        id: item.id,
+        name: item.title,
+        description: item.description || '',
+        price: item.price,
+        negotiable: item.negotiable,
+        condition: item.condition as any,
+        category: item.category,
+        location: item.location || '',
+        images: item.images || [],
+        sellerId: item.seller_id,
+        sellerName: item.profiles?.full_name || 'Unknown User',
+        sellerImage: item.profiles?.avatar_url,
+        createdAt: item.created_at,
+        status: item.status as any || 'Active',
+      }));
+
+      setProducts(transformedProducts);
+    } catch (error) {
+      console.error('Error in fetchProducts:', error);
+      toast.error('Something went wrong when loading products');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch user's wishlist
+  const fetchWishlist = async () => {
+    const user = supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('wishlists')
+        .select('product_id')
+        .eq('user_id', (await user).data.user?.id);
+
+      if (error) {
+        console.error('Error fetching wishlist:', error);
+        return;
+      }
+
+      const wishlistIds = data.map(item => item.product_id);
+      setWishlist(wishlistIds);
+    } catch (error) {
+      console.error('Error in fetchWishlist:', error);
+    }
+  };
+
+  // For now, continue using localStorage for messages until we implement that in Supabase
+  const fetchMessages = async () => {
     const storedMessages = localStorage.getItem('campusMarketMessages');
-
-    if (storedProducts) {
-      try {
-        setProducts(JSON.parse(storedProducts));
-      } catch (error) {
-        console.error('Failed to parse stored products:', error);
-        loadMockProducts();
-      }
-    } else {
-      loadMockProducts();
-    }
-
-    if (storedWishlist) {
-      try {
-        setWishlist(JSON.parse(storedWishlist));
-      } catch (error) {
-        console.error('Failed to parse stored wishlist:', error);
-      }
-    }
-
     if (storedMessages) {
       try {
         const parsedMessages = JSON.parse(storedMessages);
         setMessages(parsedMessages);
-        
-        // Generate conversations from messages
         const convos = generateConversations(parsedMessages);
         setConversations(convos);
       } catch (error) {
         console.error('Failed to parse stored messages:', error);
       }
     }
-  }, []);
-
-  // Save to localStorage whenever data changes
-  useEffect(() => {
-    localStorage.setItem('campusMarketProducts', JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem('campusMarketWishlist', JSON.stringify(wishlist));
-  }, [wishlist]);
-
-  useEffect(() => {
-    localStorage.setItem('campusMarketMessages', JSON.stringify(messages));
-    
-    // Update conversations whenever messages change
-    const convos = generateConversations(messages);
-    setConversations(convos);
-  }, [messages]);
-
-  function loadMockProducts() {
-    // Mock product data
-    const mockProducts: Product[] = [
-      {
-        id: '1',
-        name: 'Data Structures Textbook',
-        description: 'Introduction to Algorithms by Cormen, Leiserson, Rivest, and Stein. In excellent condition, barely used.',
-        price: 450,
-        negotiable: true,
-        condition: 'Like New',
-        category: 'Books',
-        location: 'Boys Hostel Block A',
-        images: ['https://images.unsplash.com/photo-1543002588-bfa74002ed7e'],
-        sellerId: 'user1',
-        sellerName: 'Rahul Kumar',
-        sellerImage: 'https://ui-avatars.com/api/?name=Rahul+Kumar&background=random',
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'Active'
-      },
-      {
-        id: '2',
-        name: 'HP Laptop - 8GB RAM, 512GB SSD',
-        description: 'HP Pavilion laptop in great working condition. 8GB RAM, 512GB SSD, Intel Core i5 processor.',
-        price: 25000,
-        negotiable: true,
-        condition: 'Good',
-        category: 'Electronics',
-        location: 'Girls Hostel Block C',
-        images: ['https://images.unsplash.com/photo-1496181133206-80ce9b88a853'],
-        sellerId: 'user2',
-        sellerName: 'Priya Sharma',
-        sellerImage: 'https://ui-avatars.com/api/?name=Priya+Sharma&background=random',
-        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'Active'
-      },
-      {
-        id: '3',
-        name: 'Scientific Calculator',
-        description: 'Casio FX-991EX Scientific Calculator. All buttons working, slight scratch on screen.',
-        price: 800,
-        negotiable: false,
-        condition: 'Good',
-        category: 'Electronics',
-        location: 'Boys Hostel Block B',
-        images: ['https://images.unsplash.com/photo-1564466809058-bf4114d55352'],
-        sellerId: 'user3',
-        sellerName: 'Vikram Singh',
-        sellerImage: 'https://ui-avatars.com/api/?name=Vikram+Singh&background=random',
-        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'Active'
-      },
-      {
-        id: '4',
-        name: 'College Hoodie - Size L',
-        description: 'IIIT RK Valley hoodie, size L. Worn only a few times, in excellent condition.',
-        price: 350,
-        negotiable: true,
-        condition: 'Like New',
-        category: 'Clothing',
-        location: 'Girls Hostel Block A',
-        images: ['https://images.unsplash.com/photo-1556821840-3a63f95609a7'],
-        sellerId: 'user4',
-        sellerName: 'Anjali Reddy',
-        sellerImage: 'https://ui-avatars.com/api/?name=Anjali+Reddy&background=random',
-        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'Active'
-      },
-      {
-        id: '5',
-        name: 'Wireless Mouse',
-        description: 'Logitech M185 Wireless Mouse. Works perfectly, battery included.',
-        price: 500,
-        negotiable: false,
-        condition: 'New',
-        category: 'Electronics',
-        location: 'Boys Hostel Block C',
-        images: ['https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7'],
-        sellerId: 'user5',
-        sellerName: 'Karthik Nair',
-        sellerImage: 'https://ui-avatars.com/api/?name=Karthik+Nair&background=random',
-        createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'Active'
-      },
-      {
-        id: '6',
-        name: 'Desk Lamp',
-        description: 'Adjustable LED desk lamp with 3 brightness levels. USB charging port included.',
-        price: 600,
-        negotiable: true,
-        condition: 'Like New',
-        category: 'Home & Decor',
-        location: 'Girls Hostel Block B',
-        images: ['https://images.unsplash.com/photo-1513506003901-1e6a229e2d15'],
-        sellerId: 'user6',
-        sellerName: 'Meera Patel',
-        sellerImage: 'https://ui-avatars.com/api/?name=Meera+Patel&background=random',
-        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'Active'
-      }
-    ];
-
-    setProducts(mockProducts);
-    localStorage.setItem('campusMarketProducts', JSON.stringify(mockProducts));
-  }
+  };
 
   function generateConversations(messagesData: Record<string, Message[]>): Conversation[] {
     const userConversations = new Map<string, Conversation>();
@@ -269,55 +209,188 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }
 
   function getUserName(userId: string): string {
-    // Placeholder - in a real app, you'd look up the username
     return `User ${userId.substring(0, 4)}`;
   }
   
   function getUserImage(userId: string): string {
-    // Placeholder - in a real app, you'd look up the user's image
     return `https://ui-avatars.com/api/?name=${getUserName(userId)}&background=random`;
   }
 
+  // Create a new product
   const createProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'status'>): Promise<string> => {
-    // Simulate API call with timeout
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const newProduct: Product = {
-      ...productData,
-      id: Math.random().toString(36).substring(2, 9),
-      createdAt: new Date().toISOString(),
-      status: 'Active'
-    };
-    
-    setProducts(prev => [newProduct, ...prev]);
-    toast.success("Product listed successfully!");
-    return newProduct.id;
-  };
-  
-  const updateProduct = (id: string, updates: Partial<Product>) => {
-    setProducts(prev => 
-      prev.map(product => 
-        product.id === id ? { ...product, ...updates } : product
-      )
-    );
-    toast.success("Product updated successfully!");
-  };
-  
-  const deleteProduct = (id: string) => {
-    setProducts(prev => prev.filter(product => product.id !== id));
-    toast.success("Product removed successfully!");
-  };
-  
-  const addToWishlist = (productId: string) => {
-    if (!wishlist.includes(productId)) {
-      setWishlist(prev => [...prev, productId]);
-      toast.success("Added to wishlist!");
+    setLoading(true);
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) {
+        throw new Error('You must be logged in to create a product');
+      }
+
+      // Transform the data to match Supabase schema
+      const supabaseProduct = {
+        title: productData.name,
+        description: productData.description,
+        price: productData.price,
+        negotiable: productData.negotiable,
+        condition: productData.condition,
+        category: productData.category,
+        location: productData.location,
+        images: productData.images,
+        seller_id: user.id,
+        status: 'Active',
+      };
+
+      const { data, error } = await supabase
+        .from('products')
+        .insert(supabaseProduct)
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('Error creating product:', error);
+        toast.error('Failed to create product');
+        throw error;
+      }
+
+      // Refresh products
+      await fetchProducts();
+      toast.success("Product listed successfully!");
+
+      return data.id;
+    } catch (error) {
+      console.error('Error in createProduct:', error);
+      toast.error('Something went wrong. Please try again.');
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
   
-  const removeFromWishlist = (productId: string) => {
-    setWishlist(prev => prev.filter(id => id !== productId));
-    toast.success("Removed from wishlist");
+  // Update an existing product
+  const updateProduct = async (id: string, updates: Partial<Product>) => {
+    setLoading(true);
+    try {
+      // Transform updates to match Supabase schema
+      const supabaseUpdates: any = {};
+      
+      if (updates.name !== undefined) supabaseUpdates.title = updates.name;
+      if (updates.description !== undefined) supabaseUpdates.description = updates.description;
+      if (updates.price !== undefined) supabaseUpdates.price = updates.price;
+      if (updates.negotiable !== undefined) supabaseUpdates.negotiable = updates.negotiable;
+      if (updates.condition !== undefined) supabaseUpdates.condition = updates.condition;
+      if (updates.category !== undefined) supabaseUpdates.category = updates.category;
+      if (updates.location !== undefined) supabaseUpdates.location = updates.location;
+      if (updates.images !== undefined) supabaseUpdates.images = updates.images;
+      if (updates.status !== undefined) supabaseUpdates.status = updates.status;
+
+      const { error } = await supabase
+        .from('products')
+        .update(supabaseUpdates)
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error updating product:', error);
+        toast.error('Failed to update product');
+        throw error;
+      }
+
+      // Refresh products
+      await fetchProducts();
+      toast.success("Product updated successfully!");
+    } catch (error) {
+      console.error('Error in updateProduct:', error);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Delete a product
+  const deleteProduct = async (id: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting product:', error);
+        toast.error('Failed to delete product');
+        throw error;
+      }
+
+      // Update local state
+      setProducts(prev => prev.filter(product => product.id !== id));
+      toast.success("Product removed successfully!");
+    } catch (error) {
+      console.error('Error in deleteProduct:', error);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Add product to wishlist
+  const addToWishlist = async (productId: string) => {
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) {
+        toast.error("You must be logged in to save to wishlist");
+        return;
+      }
+
+      if (!wishlist.includes(productId)) {
+        const { error } = await supabase
+          .from('wishlists')
+          .insert({
+            product_id: productId,
+            user_id: user.id
+          });
+
+        if (error) {
+          console.error('Error adding to wishlist:', error);
+          toast.error('Failed to add to wishlist');
+          return;
+        }
+
+        setWishlist(prev => [...prev, productId]);
+        toast.success("Added to wishlist!");
+      }
+    } catch (error) {
+      console.error('Error in addToWishlist:', error);
+      toast.error('Something went wrong. Please try again.');
+    }
+  };
+  
+  // Remove product from wishlist
+  const removeFromWishlist = async (productId: string) => {
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) {
+        toast.error("You must be logged in to manage your wishlist");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('wishlists')
+        .delete()
+        .match({
+          product_id: productId,
+          user_id: user.id
+        });
+
+      if (error) {
+        console.error('Error removing from wishlist:', error);
+        toast.error('Failed to remove from wishlist');
+        return;
+      }
+
+      setWishlist(prev => prev.filter(id => id !== productId));
+      toast.success("Removed from wishlist");
+    } catch (error) {
+      console.error('Error in removeFromWishlist:', error);
+      toast.error('Something went wrong. Please try again.');
+    }
   };
   
   const sendMessage = (receiverId: string, content: string, productId?: string) => {
@@ -388,7 +461,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     removeFromWishlist,
     sendMessage,
     markAsRead,
-    getUserProducts
+    getUserProducts,
+    fetchProducts
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

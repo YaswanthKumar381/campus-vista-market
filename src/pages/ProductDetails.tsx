@@ -28,7 +28,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import { BadgeCheck, Heart, MessageSquare, Trash2, ArrowLeft, Edit, MapPin, CalendarDays, Phone } from 'lucide-react';
+import { BadgeCheck, Heart, MessageSquare, Trash2, ArrowLeft, Edit, MapPin, CalendarDays, Phone, Instagram, Twitter } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -38,7 +38,7 @@ import { supabase } from '@/integrations/supabase/client';
 const ProductDetails = () => {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
-  const { products, wishlist, addToWishlist, removeFromWishlist, sendMessage, deleteProduct } = useData();
+  const { products, fetchProducts, wishlist, addToWishlist, removeFromWishlist, sendMessage, deleteProduct } = useData();
   const { user } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -46,11 +46,22 @@ const ProductDetails = () => {
   const [message, setMessage] = useState('Hi, is this still available?');
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [sellerPhoneNumber, setSellerPhoneNumber] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const isWishlisted = productId ? wishlist.includes(productId) : false;
+
+  useEffect(() => {
+    const fetchProductDetails = async () => {
+      setIsLoading(true);
+      await fetchProducts();
+      setIsLoading(false);
+    };
+    
+    fetchProductDetails();
+  }, [fetchProducts]);
 
   // Find the product and determine if current user is the owner
   useEffect(() => {
-    if (productId) {
+    if (productId && products.length > 0) {
       const foundProduct = products.find(p => p.id === productId);
       if (foundProduct) {
         setProduct(foundProduct);
@@ -110,10 +121,10 @@ const ProductDetails = () => {
     navigate(`/chat/${product.sellerId}`);
   };
 
-  const handleDeleteProduct = () => {
+  const handleDeleteProduct = async () => {
     if (!productId) return;
     
-    deleteProduct(productId);
+    await deleteProduct(productId);
     toast.success('Product deleted successfully');
     navigate('/dashboard');
   };
@@ -136,10 +147,18 @@ const ProductDetails = () => {
     });
   };
 
-  if (!product) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-bounce h-8 w-8 bg-campus-blue rounded-full"></div>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div>Product not found</div>
       </div>
     );
   }
@@ -214,6 +233,31 @@ const ProductDetails = () => {
           <div className="mt-8">
             <h2 className="text-xl font-bold mb-4">Description</h2>
             <p className="text-gray-700 whitespace-pre-line">{product.description}</p>
+          </div>
+          
+          {/* Social Links */}
+          <div className="mt-8 pt-4 border-t border-gray-200">
+            <h2 className="text-lg font-medium mb-3">Follow us on social media</h2>
+            <div className="flex space-x-4">
+              <a 
+                href="https://www.instagram.com/campusmarket1/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center text-gray-600 hover:text-pink-600 transition-colors"
+              >
+                <Instagram className="h-5 w-5 mr-2" />
+                <span>@campusmarket1</span>
+              </a>
+              <a 
+                href="https://x.com/campus43281" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center text-gray-600 hover:text-blue-400 transition-colors"
+              >
+                <Twitter className="h-5 w-5 mr-2" />
+                <span>@campus43281</span>
+              </a>
+            </div>
           </div>
         </div>
 
@@ -357,16 +401,14 @@ const ProductDetails = () => {
                 </CardFooter>
               </Card>
               
-              {sellerPhoneNumber && (
-                <Button 
-                  variant="outline"
-                  className="w-full" 
-                  onClick={handleContactSeller}
-                >
-                  <Phone className="mr-2 h-4 w-4" />
-                  Contact via WhatsApp
-                </Button>
-              )}
+              <Button 
+                variant="outline"
+                className="w-full" 
+                onClick={handleContactSeller}
+              >
+                <Phone className="mr-2 h-4 w-4" />
+                Contact via WhatsApp
+              </Button>
             </div>
           )}
         </div>
