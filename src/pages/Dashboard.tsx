@@ -1,13 +1,13 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useData, Product } from '@/context/DataContext';
+import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Search, Plus, Instagram, Twitter } from 'lucide-react';
 import ProductCard from '@/components/products/ProductCard';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Dashboard = () => {
   const { products, fetchProducts } = useData();
@@ -16,7 +16,6 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch products when component mounts
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
@@ -27,7 +26,6 @@ const Dashboard = () => {
     loadData();
   }, [fetchProducts]);
 
-  // Product filtering
   const allProducts = products.filter(product => 
     product.status === 'Active' && 
     (searchQuery === '' || 
@@ -36,10 +34,8 @@ const Dashboard = () => {
       product.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  // Group products by category
   const categories = [...new Set(allProducts.map(product => product.category))];
   
-  // Get recent products (last 7 days)
   const recentProducts = allProducts.filter(product => {
     const productDate = new Date(product.createdAt);
     const sevenDaysAgo = new Date();
@@ -47,16 +43,26 @@ const Dashboard = () => {
     return productDate >= sevenDaysAgo;
   });
 
-  // Filter products based on active tab
   const filteredProducts = activeTab === 'all' 
     ? allProducts
     : activeTab === 'recent' 
       ? recentProducts
       : allProducts.filter(product => product.category === activeTab);
 
+  const ProductsSkeleton = () => (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {[...Array(8)].map((_, i) => (
+        <div key={i} className="space-y-3">
+          <Skeleton className="aspect-square rounded-lg" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="animate-fade-in">
-      {/* Hero section */}
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-campus-blue to-campus-blue-dark text-white mb-8">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f')] bg-cover bg-center opacity-20"></div>
         <div className="relative z-10 px-6 py-12 md:py-16 lg:py-20">
@@ -77,7 +83,6 @@ const Dashboard = () => {
               </Link>
             </div>
             
-            {/* Social media links */}
             <div className="flex items-center mt-6 space-x-4">
               <a href="https://www.instagram.com/campusmarket1/" target="_blank" rel="noopener noreferrer" 
                 className="flex items-center text-white hover:text-blue-100 transition-colors">
@@ -94,7 +99,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Search and tabs */}
       <div className="space-y-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -120,9 +124,7 @@ const Dashboard = () => {
 
           <TabsContent value={activeTab}>
             {isLoading ? (
-              <div className="flex justify-center items-center py-20">
-                <div className="animate-bounce h-8 w-8 bg-campus-blue rounded-full"></div>
-              </div>
+              <ProductsSkeleton />
             ) : filteredProducts.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
                 {filteredProducts.map((product) => (

@@ -13,10 +13,11 @@ type ProductCardProps = {
 const ProductCard: React.FC<ProductCardProps> = ({ product, className }) => {
   const { wishlist, addToWishlist, removeFromWishlist } = useData();
   const isWishlisted = wishlist.includes(product.id);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleWishlistToggle = (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent navigation
-    e.stopPropagation(); // Prevent event bubbling
+    e.preventDefault();
+    e.stopPropagation();
     
     if (isWishlisted) {
       removeFromWishlist(product.id);
@@ -28,14 +29,24 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, className }) => {
   return (
     <Link to={`/products/${product.id}`} className={cn("product-card block", className)}>
       <div className="relative overflow-hidden">
-        {/* Product image */}
-        <div className="aspect-square overflow-hidden">
+        {/* Product image with loading state */}
+        <div className="aspect-square overflow-hidden bg-gray-100">
+          {!imageLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="animate-pulse bg-gray-200 w-full h-full" />
+            </div>
+          )}
           <img 
             src={product.images[0] || '/placeholder.svg'} 
             alt={product.name}
-            className="product-card-image"
+            className={cn(
+              "product-card-image transition-opacity duration-200",
+              imageLoaded ? "opacity-100" : "opacity-0"
+            )}
+            onLoad={() => setImageLoaded(true)}
             onError={(e) => {
               e.currentTarget.src = '/placeholder.svg';
+              setImageLoaded(true);
             }}
           />
         </div>

@@ -53,6 +53,7 @@ type DataContextType = {
   markAsRead: (userId: string) => void;
   getUserProducts: (userId: string) => Product[];
   fetchProducts: () => Promise<void>;
+  loading: boolean;
 };
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -74,6 +75,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Fetch products from Supabase
   const fetchProducts = async () => {
     try {
+      setLoading(true);
+      
       // First get all products
       const { data: productsData, error: productsError } = await supabase
         .from('products')
@@ -99,7 +102,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Then fetch all profiles to map to products
+      // Then fetch all profiles in a single query
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url');
@@ -116,7 +119,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         profilesMap.set(profile.id, profile);
       });
 
-      // Transform from Supabase format to our app format
+      // Transform and combine the data
       const transformedProducts = productsData.map(item => {
         const sellerProfile = profilesMap.get(item.seller_id);
         return {
@@ -145,6 +148,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   };
+
+  // Set up real-time subscription for products
+  useEffect(() => {
+    const channel = supabase
+      .channel('products-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'products'
+        },
+        (payload) => {
+          console.log('Product change received:', payload);
+          fetchProducts(); // Refresh products when changes occur
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Fetch user's wishlist
   const fetchWishlist = async () => {
@@ -482,7 +508,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     sendMessage,
     markAsRead,
     getUserProducts,
-    fetchProducts
+    fetchProducts,
+    loading
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
