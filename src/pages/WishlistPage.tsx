@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useData } from '@/context/DataContext';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
@@ -7,7 +7,12 @@ import ProductCard from '@/components/products/ProductCard';
 import { ShoppingBag } from 'lucide-react';
 
 const WishlistPage = () => {
-  const { products, wishlist } = useData();
+  const { products, wishlist, fetchProducts } = useData();
+  
+  // Refresh products when the page loads
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
   
   // Get all products in the wishlist
   const wishlistedProducts = products.filter(product => wishlist.includes(product.id));

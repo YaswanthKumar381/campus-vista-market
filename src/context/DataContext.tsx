@@ -74,7 +74,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Fetch products from Supabase
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
+      // First get all products
+      const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select(`
           id, 
@@ -88,34 +89,53 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           images, 
           seller_id, 
           status, 
-          created_at,
-          profiles(id, full_name, avatar_url)
+          created_at
         `)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching products:', error);
+      if (productsError) {
+        console.error('Error fetching products:', productsError);
         toast.error('Failed to fetch products');
         return;
       }
 
+      // Then fetch all profiles to map to products
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url');
+
+      if (profilesError) {
+        console.error('Error fetching profiles:', profilesError);
+        toast.error('Failed to fetch user profiles');
+        return;
+      }
+
+      // Create a map of profiles for faster lookup
+      const profilesMap = new Map();
+      profilesData.forEach(profile => {
+        profilesMap.set(profile.id, profile);
+      });
+
       // Transform from Supabase format to our app format
-      const transformedProducts = data.map(item => ({
-        id: item.id,
-        name: item.title,
-        description: item.description || '',
-        price: item.price,
-        negotiable: item.negotiable,
-        condition: item.condition as any,
-        category: item.category,
-        location: item.location || '',
-        images: item.images || [],
-        sellerId: item.seller_id,
-        sellerName: item.profiles?.full_name || 'Unknown User',
-        sellerImage: item.profiles?.avatar_url,
-        createdAt: item.created_at,
-        status: item.status as any || 'Active',
-      }));
+      const transformedProducts = productsData.map(item => {
+        const sellerProfile = profilesMap.get(item.seller_id);
+        return {
+          id: item.id,
+          name: item.title,
+          description: item.description || '',
+          price: item.price,
+          negotiable: item.negotiable,
+          condition: item.condition as any,
+          category: item.category,
+          location: item.location || '',
+          images: item.images || [],
+          sellerId: item.seller_id,
+          sellerName: sellerProfile ? sellerProfile.full_name : 'Unknown User',
+          sellerImage: sellerProfile ? sellerProfile.avatar_url : undefined,
+          createdAt: item.created_at,
+          status: item.status as any || 'Active',
+        };
+      });
 
       setProducts(transformedProducts);
     } catch (error) {
@@ -128,14 +148,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch user's wishlist
   const fetchWishlist = async () => {
-    const user = supabase.auth.getUser();
-    if (!user) return;
-
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from('wishlists')
         .select('product_id')
-        .eq('user_id', (await user).data.user?.id);
+        .eq('user_id', user.id);
 
       if (error) {
         console.error('Error fetching wishlist:', error);
@@ -220,7 +240,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const createProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'status'>): Promise<string> => {
     setLoading(true);
     try {
-      const user = (await supabase.auth.getUser()).data.user;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('You must be logged in to create a product');
       }
@@ -247,7 +267,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error creating product:', error);
-        toast.error('Failed to create product');
+        toast.error('Failed to create product: ' + error.message);
         throw error;
       }
 
@@ -333,7 +353,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Add product to wishlist
   const addToWishlist = async (productId: string) => {
     try {
-      const user = (await supabase.auth.getUser()).data.user;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("You must be logged in to save to wishlist");
         return;
@@ -349,7 +369,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
           console.error('Error adding to wishlist:', error);
-          toast.error('Failed to add to wishlist');
+          toast.error('Failed to add to wishlist: ' + error.message);
           return;
         }
 
@@ -365,7 +385,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Remove product from wishlist
   const removeFromWishlist = async (productId: string) => {
     try {
-      const user = (await supabase.auth.getUser()).data.user;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("You must be logged in to manage your wishlist");
         return;
