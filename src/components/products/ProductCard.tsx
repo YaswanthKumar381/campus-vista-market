@@ -27,20 +27,20 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, className }) => {
   };
 
   return (
-    <Link to={`/products/${product.id}`} className={cn("product-card block", className)}>
+    <Link to={`/products/${product.id}`} className={cn("product-card block relative", className)}>
       <div className="relative overflow-hidden">
         {/* Product image with loading state */}
-        <div className="aspect-square overflow-hidden bg-gray-100">
+        <div className="aspect-square overflow-hidden bg-gray-100 relative">
           {!imageLoaded && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="animate-pulse bg-gray-200 w-full h-full" />
             </div>
           )}
           <img 
-            src={product.images[0] || '/placeholder.svg'} 
+            src={product.images?.[0] || '/placeholder.svg'} 
             alt={product.name}
             className={cn(
-              "product-card-image transition-opacity duration-200",
+              "product-card-image w-full h-full object-cover transition-opacity duration-200",
               imageLoaded ? "opacity-100" : "opacity-0"
             )}
             onLoad={() => setImageLoaded(true)}

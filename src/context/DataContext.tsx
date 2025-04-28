@@ -98,28 +98,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Set up real-time subscription for wishlists
   useEffect(() => {
-    const { data: { user } } = supabase.auth.getSession();
-    if (!user) return;
+    const setupWishlistRealtime = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
-    const channel = supabase
-      .channel('wishlists-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'wishlists'
-        },
-        () => {
-          console.log('Wishlist change received, refreshing wishlist...');
-          fetchWishlist();
-        }
-      )
-      .subscribe();
+      const channel = supabase
+        .channel('wishlists-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'wishlists'
+          },
+          () => {
+            console.log('Wishlist change received, refreshing wishlist...');
+            fetchWishlist();
+          }
+        )
+        .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
+      return () => {
+        supabase.removeChannel(channel);
+      };
     };
+
+    setupWishlistRealtime();
   }, []);
 
   // Fetch products from Supabase with optimized approach
@@ -128,7 +132,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       console.log('Fetching products...');
       
-      // First get all products
+      // First get all products with a more efficient query
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select(`
@@ -150,6 +154,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (productsError) {
         console.error('Error fetching products:', productsError);
         toast.error('Failed to fetch products');
+        setProducts([]);
         return;
       }
 
@@ -174,7 +179,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (profilesError) {
         console.error('Error fetching profiles:', profilesError);
         toast.error('Failed to fetch user profiles');
-        return;
+        // Still proceed with displaying products even if profiles fetch fails
       }
 
       // Create a map of profiles for faster lookup
@@ -348,10 +353,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
 
-      // Refresh products
-      await fetchProducts();
       toast.success("Product listed successfully!");
-
       return data.id;
     } catch (error) {
       console.error('Error in createProduct:', error);
