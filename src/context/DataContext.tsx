@@ -16,6 +16,7 @@ export type Product = {
   sellerId: string;
   sellerName: string;
   sellerImage?: string;
+  sellerPhone?: string;
   createdAt: string;
   status: 'Active' | 'Sold' | 'Reserved';
 };
@@ -72,10 +73,60 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     fetchMessages();
   }, []);
 
-  // Fetch products from Supabase
+  // Set up real-time subscription for products
+  useEffect(() => {
+    const channel = supabase
+      .channel('products-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'products'
+        },
+        () => {
+          console.log('Product change received, refreshing products...');
+          fetchProducts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Set up real-time subscription for wishlists
+  useEffect(() => {
+    const { data: { user } } = supabase.auth.getSession();
+    if (!user) return;
+
+    const channel = supabase
+      .channel('wishlists-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wishlists'
+        },
+        () => {
+          console.log('Wishlist change received, refreshing wishlist...');
+          fetchWishlist();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Fetch products from Supabase with optimized approach
   const fetchProducts = async () => {
     try {
       setLoading(true);
+      console.log('Fetching products...');
       
       // First get all products
       const { data: productsData, error: productsError } = await supabase
@@ -102,10 +153,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Then fetch all profiles in a single query
+      if (!productsData || productsData.length === 0) {
+        console.log('No products found');
+        setProducts([]);
+        setLoading(false);
+        return;
+      }
+
+      console.log(`Found ${productsData.length} products`);
+
+      // Get all unique seller IDs
+      const sellerIds = [...new Set(productsData.map(product => product.seller_id))];
+      
+      // Then fetch all relevant profiles in a single query
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url');
+        .select('id, full_name, avatar_url, phone_number')
+        .in('id', sellerIds);
 
       if (profilesError) {
         console.error('Error fetching profiles:', profilesError);
@@ -115,9 +179,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       // Create a map of profiles for faster lookup
       const profilesMap = new Map();
-      profilesData.forEach(profile => {
-        profilesMap.set(profile.id, profile);
-      });
+      if (profilesData) {
+        profilesData.forEach(profile => {
+          profilesMap.set(profile.id, profile);
+        });
+      }
 
       // Transform and combine the data
       const transformedProducts = productsData.map(item => {
@@ -135,12 +201,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           sellerId: item.seller_id,
           sellerName: sellerProfile ? sellerProfile.full_name : 'Unknown User',
           sellerImage: sellerProfile ? sellerProfile.avatar_url : undefined,
+          sellerPhone: sellerProfile ? sellerProfile.phone_number : undefined,
           createdAt: item.created_at,
           status: item.status as any || 'Active',
         };
       });
 
       setProducts(transformedProducts);
+      console.log('Products fetched successfully');
     } catch (error) {
       console.error('Error in fetchProducts:', error);
       toast.error('Something went wrong when loading products');
@@ -149,46 +217,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Set up real-time subscription for products
-  useEffect(() => {
-    const channel = supabase
-      .channel('products-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'products'
-        },
-        (payload) => {
-          console.log('Product change received:', payload);
-          fetchProducts(); // Refresh products when changes occur
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Fetch user's wishlist
+  // Fetch user's wishlist with real-time updates
   const fetchWishlist = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.log('No session found, skipping wishlist fetch');
+        return;
+      }
 
+      console.log('Fetching wishlist...');
+      
       const { data, error } = await supabase
         .from('wishlists')
         .select('product_id')
-        .eq('user_id', user.id);
+        .eq('user_id', session.user.id);
 
       if (error) {
         console.error('Error fetching wishlist:', error);
         return;
       }
 
-      const wishlistIds = data.map(item => item.product_id);
+      const wishlistIds = data ? data.map(item => item.product_id) : [];
+      console.log(`Found ${wishlistIds.length} items in wishlist`);
       setWishlist(wishlistIds);
     } catch (error) {
       console.error('Error in fetchWishlist:', error);
@@ -266,8 +317,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const createProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'status'>): Promise<string> => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         throw new Error('You must be logged in to create a product');
       }
 
@@ -281,7 +332,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         category: productData.category,
         location: productData.location,
         images: productData.images,
-        seller_id: user.id,
+        seller_id: session.user.id,
         status: 'Active',
       };
 
@@ -379,8 +430,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Add product to wishlist
   const addToWishlist = async (productId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         toast.error("You must be logged in to save to wishlist");
         return;
       }
@@ -390,7 +441,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           .from('wishlists')
           .insert({
             product_id: productId,
-            user_id: user.id
+            user_id: session.user.id
           });
 
         if (error) {
@@ -411,8 +462,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Remove product from wishlist
   const removeFromWishlist = async (productId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         toast.error("You must be logged in to manage your wishlist");
         return;
       }
@@ -422,7 +473,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         .delete()
         .match({
           product_id: productId,
-          user_id: user.id
+          user_id: session.user.id
         });
 
       if (error) {

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '@/context/DataContext';
@@ -5,22 +6,21 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, Instagram, Twitter } from 'lucide-react';
+import { Search, Plus, Instagram, Twitter, Loader2 } from 'lucide-react';
 import ProductCard from '@/components/products/ProductCard';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const Dashboard = () => {
-  const { products, fetchProducts } = useData();
+  const { products, fetchProducts, loading } = useData();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
-      setIsLoading(true);
       await fetchProducts();
-      setIsLoading(false);
+      setIsInitialLoad(false);
     };
     
     loadData();
@@ -123,8 +123,17 @@ const Dashboard = () => {
           </TabsList>
 
           <TabsContent value={activeTab}>
-            {isLoading ? (
-              <ProductsSkeleton />
+            {isInitialLoad || loading ? (
+              <div className="my-8">
+                {isInitialLoad ? (
+                  <ProductsSkeleton />
+                ) : (
+                  <div className="flex justify-center items-center py-20">
+                    <Loader2 className="h-10 w-10 animate-spin text-gray-400" />
+                    <span className="ml-4 text-xl text-gray-500">Loading products...</span>
+                  </div>
+                )}
+              </div>
             ) : filteredProducts.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
                 {filteredProducts.map((product) => (
