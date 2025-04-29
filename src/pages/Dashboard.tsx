@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, Instagram, Twitter, Loader2 } from 'lucide-react';
+import { Search, Plus, Instagram, Twitter, Loader2, RefreshCcw } from 'lucide-react';
 import ProductCard from '@/components/products/ProductCard';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -16,6 +16,7 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -25,6 +26,15 @@ const Dashboard = () => {
     
     loadData();
   }, [fetchProducts]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const allProducts = products.filter(product => 
     product.status === 'Active' && 
@@ -100,15 +110,26 @@ const Dashboard = () => {
       </div>
 
       <div className="space-y-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            type="search"
-            placeholder="Search products..."
-            className="pl-9"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              type="search"
+              placeholder="Search products..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={handleRefresh} 
+            disabled={loading || isRefreshing}
+            title="Refresh products"
+          >
+            <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
         <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>

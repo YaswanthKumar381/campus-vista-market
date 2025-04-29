@@ -126,72 +126,107 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setupWishlistRealtime();
   }, []);
 
-  // Fetch products from Supabase with optimized approach
+  // Fetch products from Supabase with pagination to avoid timeouts
   const fetchProducts = async () => {
     try {
       setLoading(true);
       console.log('Fetching products...');
       
-      // First get all products with a more efficient query
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select(`
-          id, 
-          title, 
-          description, 
-          price, 
-          negotiable, 
-          condition, 
-          category, 
-          location, 
-          images, 
-          seller_id, 
-          status, 
-          created_at
-        `)
-        .order('created_at', { ascending: false });
-
-      if (productsError) {
-        console.error('Error fetching products:', productsError);
-        toast.error('Failed to fetch products');
-        setProducts([]);
-        return;
+      // Use pagination to avoid timeout issues
+      const PAGE_SIZE = 20;
+      let allProducts: any[] = [];
+      let page = 0;
+      let hasMore = true;
+      
+      // Fetch products in batches until we have all of them
+      while (hasMore) {
+        const { data: productsData, error: productsError } = await supabase
+          .from('products')
+          .select(`
+            id, 
+            title, 
+            description, 
+            price, 
+            negotiable, 
+            condition, 
+            category, 
+            location, 
+            images, 
+            seller_id, 
+            status, 
+            created_at
+          `)
+          .order('created_at', { ascending: false })
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        
+        if (productsError) {
+          console.error('Error fetching products batch:', productsError);
+          // Continue to the next batch instead of failing completely
+          page++;
+          continue;
+        }
+        
+        if (!productsData || productsData.length === 0) {
+          hasMore = false;
+          break;
+        }
+        
+        if (productsData.length < PAGE_SIZE) {
+          hasMore = false;
+        }
+        
+        allProducts = [...allProducts, ...productsData];
+        page++;
+        
+        // Add a small delay to avoid overwhelming the database
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-
-      if (!productsData || productsData.length === 0) {
+      
+      if (allProducts.length === 0) {
         console.log('No products found');
         setProducts([]);
         setLoading(false);
         return;
       }
-
-      console.log(`Found ${productsData.length} products`);
+      
+      console.log(`Found ${allProducts.length} products`);
 
       // Get all unique seller IDs
-      const sellerIds = [...new Set(productsData.map(product => product.seller_id))];
+      const sellerIds = [...new Set(allProducts.map(product => product.seller_id))];
       
-      // Then fetch all relevant profiles in a single query
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, phone_number')
-        .in('id', sellerIds);
-
-      if (profilesError) {
-        console.error('Error fetching profiles:', profilesError);
-        toast.error('Failed to fetch user profiles');
-        // Still proceed with displaying products even if profiles fetch fails
+      // Fetch profiles in smaller batches if there are many sellers
+      const PROFILE_BATCH_SIZE = 10;
+      let allProfiles: any[] = [];
+      
+      for (let i = 0; i < sellerIds.length; i += PROFILE_BATCH_SIZE) {
+        const batchSellerIds = sellerIds.slice(i, i + PROFILE_BATCH_SIZE);
+        
+        try {
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, phone_number')
+            .in('id', batchSellerIds);
+          
+          if (profilesData && profilesData.length > 0) {
+            allProfiles = [...allProfiles, ...profilesData];
+          }
+          
+          // Add a small delay
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (error) {
+          console.error('Error fetching profiles batch:', error);
+          // Continue with the next batch
+        }
       }
 
       // Create a map of profiles for faster lookup
       const profilesMap = new Map();
-      if (profilesData) {
-        profilesData.forEach(profile => {
-          profilesMap.set(profile.id, profile);
-        });
-      }
+      allProfiles.forEach(profile => {
+        profilesMap.set(profile.id, profile);
+      });
 
       // Transform and combine the data
-      const transformedProducts = productsData.map(item => {
+      const transformedProducts = allProducts.map(item => {
         const sellerProfile = profilesMap.get(item.seller_id);
         return {
           id: item.id,
