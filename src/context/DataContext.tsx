@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,10 +55,17 @@ type DataContextType = {
   markAsRead: (userId: string) => void;
   getUserProducts: (userId: string) => Product[];
   fetchProducts: () => Promise<void>;
+  fetchWishlistedProducts: () => Promise<Product[]>;
   loading: boolean;
+  wishlistLoading: boolean;
 };
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+
+// Maximum number of retries for fetching data
+const MAX_RETRIES = 3;
+// Delay between retries in milliseconds
+const RETRY_DELAY = 1000;
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
@@ -65,6 +73,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -126,6 +135,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setupWishlistRealtime();
   }, []);
 
+  // Helper function for retrying fetch operations
+  const fetchWithRetry = async (operation: () => Promise<any>, retries = MAX_RETRIES): Promise<any> => {
+    try {
+      return await operation();
+    } catch (error) {
+      if (retries > 0) {
+        console.log(`Retrying operation, ${retries} attempts left`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return fetchWithRetry(operation, retries - 1);
+      }
+      throw error;
+    }
+  };
+
   // Fetch products from Supabase with pagination to avoid timeouts
   const fetchProducts = async () => {
     try {
@@ -133,53 +156,57 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.log('Fetching products...');
       
       // Use pagination to avoid timeout issues
-      const PAGE_SIZE = 20;
+      const PAGE_SIZE = 10; // Reduced page size to minimize timeouts
       let allProducts: any[] = [];
-      let page = 0;
-      let hasMore = true;
+      let hasMoreData = true;
+      let currentPage = 0;
       
-      // Fetch products in batches until we have all of them
-      while (hasMore) {
-        const { data: productsData, error: productsError } = await supabase
-          .from('products')
-          .select(`
-            id, 
-            title, 
-            description, 
-            price, 
-            negotiable, 
-            condition, 
-            category, 
-            location, 
-            images, 
-            seller_id, 
-            status, 
-            created_at
-          `)
-          .order('created_at', { ascending: false })
-          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-        
-        if (productsError) {
-          console.error('Error fetching products batch:', productsError);
-          // Continue to the next batch instead of failing completely
-          page++;
-          continue;
+      while (hasMoreData && currentPage < 3) { // Limit to 3 pages (30 products) to avoid excessive calls
+        try {
+          const { data, error } = await supabase
+            .from('products')
+            .select(`
+              id, 
+              title, 
+              description, 
+              price, 
+              negotiable, 
+              condition, 
+              category, 
+              location, 
+              images, 
+              seller_id, 
+              status, 
+              created_at
+            `)
+            .eq('status', 'Active') // Only fetch active products
+            .order('created_at', { ascending: false })
+            .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
+          
+          if (error) {
+            console.error(`Error fetching products batch (page ${currentPage}):`, error);
+            currentPage++;
+            continue;
+          }
+          
+          if (!data || data.length === 0) {
+            hasMoreData = false;
+            break;
+          }
+          
+          if (data.length < PAGE_SIZE) {
+            hasMoreData = false;
+          }
+          
+          allProducts = [...allProducts, ...data];
+          currentPage++;
+          
+          // Small delay to avoid overwhelming the database
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (err) {
+          console.error(`Error fetching products batch (page ${currentPage}):`, err);
+          currentPage++;
         }
-        
-        if (!productsData || productsData.length === 0) {
-          hasMore = false;
-          break;
-        }
-        
-        if (productsData.length < PAGE_SIZE) {
-          hasMore = false;
-        }
-        
-        allProducts = [...allProducts, ...productsData];
-        page++;
-        
-        // Add a small delay to avoid overwhelming the database
-        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
       if (allProducts.length === 0) {
@@ -194,36 +221,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // Get all unique seller IDs
       const sellerIds = [...new Set(allProducts.map(product => product.seller_id))];
       
-      // Fetch profiles in smaller batches if there are many sellers
-      const PROFILE_BATCH_SIZE = 10;
-      let allProfiles: any[] = [];
-      
-      for (let i = 0; i < sellerIds.length; i += PROFILE_BATCH_SIZE) {
-        const batchSellerIds = sellerIds.slice(i, i + PROFILE_BATCH_SIZE);
-        
-        try {
-          const { data: profilesData } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url, phone_number')
-            .in('id', batchSellerIds);
-          
-          if (profilesData && profilesData.length > 0) {
-            allProfiles = [...allProfiles, ...profilesData];
-          }
-          
-          // Add a small delay
-          await new Promise(resolve => setTimeout(resolve, 50));
-        } catch (error) {
-          console.error('Error fetching profiles batch:', error);
-          // Continue with the next batch
-        }
-      }
-
       // Create a map of profiles for faster lookup
       const profilesMap = new Map();
-      allProfiles.forEach(profile => {
-        profilesMap.set(profile.id, profile);
-      });
+      
+      // Fetch profiles in smaller batches
+      if (sellerIds.length > 0) {
+        for (let i = 0; i < sellerIds.length; i += 5) {
+          const batchSellerIds = sellerIds.slice(i, i + 5);
+          
+          try {
+            const { data: profilesData } = await supabase
+              .from('profiles')
+              .select('id, full_name, avatar_url, phone_number')
+              .in('id', batchSellerIds);
+            
+            if (profilesData && profilesData.length > 0) {
+              profilesData.forEach(profile => {
+                profilesMap.set(profile.id, profile);
+              });
+            }
+          } catch (error) {
+            console.error('Error fetching profiles batch:', error);
+          }
+        }
+      }
 
       // Transform and combine the data
       const transformedProducts = allProducts.map(item => {
@@ -268,10 +289,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       console.log('Fetching wishlist...');
       
-      const { data, error } = await supabase
-        .from('wishlists')
-        .select('product_id')
-        .eq('user_id', session.user.id);
+      const { data, error } = await fetchWithRetry(async () => {
+        return await supabase
+          .from('wishlists')
+          .select('product_id')
+          .eq('user_id', session.user.id);
+      });
 
       if (error) {
         console.error('Error fetching wishlist:', error);
@@ -283,6 +306,129 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setWishlist(wishlistIds);
     } catch (error) {
       console.error('Error in fetchWishlist:', error);
+    }
+  };
+  
+  // Fetch products in the user's wishlist
+  const fetchWishlistedProducts = async (): Promise<Product[]> => {
+    try {
+      setWishlistLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.log('No session found, skipping wishlist products fetch');
+        return [];
+      }
+      
+      // Get the list of product IDs in the wishlist
+      const { data: wishlistData, error: wishlistError } = await supabase
+        .from('wishlists')
+        .select('product_id')
+        .eq('user_id', session.user.id);
+        
+      if (wishlistError) {
+        console.error('Error fetching wishlist:', wishlistError);
+        return [];
+      }
+      
+      if (!wishlistData || wishlistData.length === 0) {
+        return [];
+      }
+      
+      const wishlistIds = wishlistData.map(item => item.product_id);
+      
+      // Fetch products in the wishlist, split into smaller batches if needed
+      const BATCH_SIZE = 10;
+      let wishlistProducts: any[] = [];
+      
+      for (let i = 0; i < wishlistIds.length; i += BATCH_SIZE) {
+        const batchIds = wishlistIds.slice(i, i + BATCH_SIZE);
+        
+        try {
+          const { data: productsData, error: productsError } = await supabase
+            .from('products')
+            .select(`
+              id, 
+              title, 
+              description, 
+              price, 
+              negotiable, 
+              condition, 
+              category, 
+              location, 
+              images, 
+              seller_id, 
+              status, 
+              created_at
+            `)
+            .in('id', batchIds);
+            
+          if (productsError) {
+            console.error(`Error fetching wishlist products batch:`, productsError);
+            continue;
+          }
+          
+          if (productsData && productsData.length > 0) {
+            wishlistProducts = [...wishlistProducts, ...productsData];
+          }
+        } catch (error) {
+          console.error(`Error in wishlist products batch:`, error);
+        }
+      }
+      
+      // Get seller profiles for the products
+      const sellerIds = [...new Set(wishlistProducts.map(product => product.seller_id))];
+      const profilesMap = new Map();
+      
+      if (sellerIds.length > 0) {
+        for (let i = 0; i < sellerIds.length; i += 5) {
+          const batchSellerIds = sellerIds.slice(i, i + 5);
+          
+          try {
+            const { data: profilesData } = await supabase
+              .from('profiles')
+              .select('id, full_name, avatar_url, phone_number')
+              .in('id', batchSellerIds);
+            
+            if (profilesData && profilesData.length > 0) {
+              profilesData.forEach(profile => {
+                profilesMap.set(profile.id, profile);
+              });
+            }
+          } catch (error) {
+            console.error('Error fetching profiles batch for wishlist:', error);
+          }
+        }
+      }
+      
+      // Transform products data
+      const transformedProducts = wishlistProducts.map(item => {
+        const sellerProfile = profilesMap.get(item.seller_id);
+        return {
+          id: item.id,
+          name: item.title,
+          description: item.description || '',
+          price: item.price,
+          negotiable: item.negotiable,
+          condition: item.condition as any,
+          category: item.category,
+          location: item.location || '',
+          images: item.images || [],
+          sellerId: item.seller_id,
+          sellerName: sellerProfile ? sellerProfile.full_name : 'Unknown User',
+          sellerImage: sellerProfile ? sellerProfile.avatar_url : undefined,
+          sellerPhone: sellerProfile ? sellerProfile.phone_number : undefined,
+          createdAt: item.created_at,
+          status: item.status as any || 'Active',
+        };
+      });
+      
+      return transformedProducts;
+    } catch (error) {
+      console.error('Error fetching wishlisted products:', error);
+      return [];
+    } finally {
+      setWishlistLoading(false);
     }
   };
 
@@ -474,12 +620,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!wishlist.includes(productId)) {
-        const { error } = await supabase
-          .from('wishlists')
-          .insert({
-            product_id: productId,
-            user_id: session.user.id
-          });
+        const { error } = await fetchWithRetry(async () => {
+          return await supabase
+            .from('wishlists')
+            .insert({
+              product_id: productId,
+              user_id: session.user.id
+            });
+        });
 
         if (error) {
           console.error('Error adding to wishlist:', error);
@@ -505,13 +653,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { error } = await supabase
-        .from('wishlists')
-        .delete()
-        .match({
-          product_id: productId,
-          user_id: session.user.id
-        });
+      const { error } = await fetchWithRetry(async () => {
+        return await supabase
+          .from('wishlists')
+          .delete()
+          .match({
+            product_id: productId,
+            user_id: session.user.id
+          });
+      });
 
       if (error) {
         console.error('Error removing from wishlist:', error);
@@ -597,7 +747,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     markAsRead,
     getUserProducts,
     fetchProducts,
-    loading
+    fetchWishlistedProducts,
+    loading,
+    wishlistLoading
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
