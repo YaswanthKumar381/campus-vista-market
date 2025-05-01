@@ -6,9 +6,16 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, Instagram, Twitter, Loader2, RefreshCcw } from 'lucide-react';
+import { Search, Plus, Instagram, Twitter, Loader2, RefreshCcw, HelpCircle } from 'lucide-react';
 import ProductCard from '@/components/products/ProductCard';
 import { Skeleton } from '@/components/ui/skeleton';
+import { 
+  Carousel, 
+  CarouselContent, 
+  CarouselItem, 
+  CarouselNext, 
+  CarouselPrevious 
+} from '@/components/ui/carousel';
 
 const Dashboard = () => {
   const { products, fetchProducts, loading } = useData();
@@ -17,6 +24,33 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const carouselImages = [
+    {
+      src: "https://i.ibb.co/b7bvMzH/image-1.jpg",
+      alt: "Campus market promotion 1",
+      title: "Welcome to Campus Market!",
+      description: "Buy and sell items easily with other students"
+    },
+    {
+      src: "https://i.ibb.co/5LH6svy/image-2.jpg",
+      alt: "Campus market promotion 2",
+      title: "New items every day",
+      description: "Find great deals on textbooks, electronics, and more"
+    },
+    {
+      src: "https://i.ibb.co/6Wt1Dv5/image-3.jpg",
+      alt: "Campus market promotion 3",
+      title: "Need help?",
+      description: "Visit our help center for assistance"
+    },
+    {
+      src: "https://i.ibb.co/ZJsqKtf/image-4.jpg",
+      alt: "Campus market promotion 4",
+      title: "Campus Market Community",
+      description: "Join the thriving student marketplace today"
+    }
+  ];
 
   useEffect(() => {
     const loadData = async () => {
@@ -76,7 +110,7 @@ const Dashboard = () => {
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-campus-blue to-campus-blue-dark text-white mb-8">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f')] bg-cover bg-center opacity-20"></div>
         <div className="relative z-10 px-6 py-12 md:py-16 lg:py-20">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl mb-8">
             <h1 className="font-heading text-3xl md:text-4xl font-bold mb-4">Welcome back, {user?.fullName?.split(' ')[0] || 'Student'}!</h1>
             <p className="text-lg mb-6">Find great deals or sell your items to other IIIT RK Valley students.</p>
             <div className="flex flex-wrap gap-4">
@@ -91,20 +125,52 @@ const Dashboard = () => {
                   Browse Products
                 </Button>
               </Link>
+              <Link to="/help-center">
+                <Button size="lg" variant="outline" className="text-white border-white hover:bg-white/10">
+                  <HelpCircle className="mr-2 h-4 w-4" />
+                  Help Center
+                </Button>
+              </Link>
             </div>
+          </div>
+          
+          <div className="mt-8">
+            <Carousel className="w-full max-w-5xl">
+              <CarouselContent>
+                {carouselImages.map((image, index) => (
+                  <CarouselItem key={index} className="md:basis-1/2 lg:basis-1/3">
+                    <div className="p-1">
+                      <div className="overflow-hidden rounded-lg">
+                        <img 
+                          src={image.src} 
+                          alt={image.alt} 
+                          className="w-full h-48 object-cover hover:scale-105 transition-transform duration-300" 
+                        />
+                        <div className="p-3 bg-black/50 text-white absolute bottom-0 left-0 right-0">
+                          <h3 className="font-medium">{image.title}</h3>
+                          <p className="text-sm text-gray-200">{image.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              <CarouselPrevious className="left-2 bg-white/80" />
+              <CarouselNext className="right-2 bg-white/80" />
+            </Carousel>
+          </div>
             
-            <div className="flex items-center mt-6 space-x-4">
-              <a href="https://www.instagram.com/campusmarket1/" target="_blank" rel="noopener noreferrer" 
-                className="flex items-center text-white hover:text-blue-100 transition-colors">
-                <Instagram className="h-5 w-5 mr-2" />
-                <span className="text-sm">@campusmarket1</span>
-              </a>
-              <a href="https://x.com/campus43281" target="_blank" rel="noopener noreferrer"
-                className="flex items-center text-white hover:text-blue-100 transition-colors">
-                <Twitter className="h-5 w-5 mr-2" />
-                <span className="text-sm">@campus43281</span>
-              </a>
-            </div>
+          <div className="flex items-center mt-6 space-x-4">
+            <a href="https://www.instagram.com/campusmarket1/" target="_blank" rel="noopener noreferrer" 
+              className="flex items-center text-white hover:text-blue-100 transition-colors">
+              <Instagram className="h-5 w-5 mr-2" />
+              <span className="text-sm">@campusmarket1</span>
+            </a>
+            <a href="https://x.com/campus43281" target="_blank" rel="noopener noreferrer"
+              className="flex items-center text-white hover:text-blue-100 transition-colors">
+              <Twitter className="h-5 w-5 mr-2" />
+              <span className="text-sm">@campus43281</span>
+            </a>
           </div>
         </div>
       </div>

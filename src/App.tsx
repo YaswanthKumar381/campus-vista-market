@@ -19,6 +19,8 @@ import Layout from "./components/layout/Layout";
 import ProductsPage from "./pages/ProductsPage";
 import WishlistPage from "./pages/WishlistPage";
 import ChatPage from "./pages/ChatPage";
+import HelpCenterPage from "./pages/HelpCenterPage";
+import FAQPage from "./pages/FAQPage";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +44,8 @@ const App = () => (
               <Route path="/wishlist" element={<WishlistPage />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:userId" element={<ChatPage />} />
+              <Route path="/help-center" element={<HelpCenterPage />} />
+              <Route path="/faq" element={<FAQPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
